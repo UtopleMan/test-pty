@@ -33,9 +33,10 @@ yet. Consumers live beside it: `../sharp-shell` and `../duetui`.
 passed / 10 skipped / 107 total, and it ran twenty times consecutively with no failures and no
 leaked processes. Phase 3 is *Written, not verified on Windows* — the ConPTY code compiles and its
 cases skip with a reason, but not one line of it has ever executed; `pwsh scripts/verify-windows.ps1`
-is how that changes. Phase 7 is *Blocked*, and only on decisions a person has to make: this
-repository still has no commits and no remote, so there is nothing for a consumer to add as a
-submodule. No code is outstanding for it.
+is how that changes. Phase 7 is *In progress*: this repository is published at
+`https://github.com/UtopleMan/test-pty` and sharp-shell now vendors it at `vendor/test-pty`, so the
+harness has its first real consumer. What is left there is duetui, and the line-editor tests that
+sharp-shell's own plan specifies. No code is outstanding in this repository for any of it.
 
 Before changing the Unix backend or the interop, read the Phase 2 and Phase 5 summaries. The rules
 about what a forked child may not do are not style; breaking them produces a test that hangs rather
@@ -508,27 +509,32 @@ says plainly that Unix works and Windows has never been executed, rather than "n
 so nothing in this repository waits for a fixed period, not even inside a program under test.
 
 ## Phase 7: Adoption
-Status: Blocked, needs a decision from the user
-
-**Why it is blocked, and what unblocks it.** Every item in this phase either commits to this
-repository or changes another one, and neither is something to do unasked:
-
-1. *This repository has no commits and no remote.* A submodule is a URL plus a commit, so there is
-   nothing for a consumer to point at yet. Someone has to decide where `test-pty` is published and
-   approve the first commit.
-2. *Two other repositories get modified* — `../sharp-shell` and `../duetui` each gain a submodule, a
-   project reference, and ported tests.
-3. *`git rm non-ai/support/pty-drive.py` in duetui* deletes a file that repository's own instructions
-   put out of bounds for tools, so a person should do it or explicitly say to.
-
-Everything the phase needs from this side is ready: the API is complete on Unix, the suite is green
-and stable over twenty consecutive runs, and `scripts/verify-windows.ps1` exists for the Windows
-half. Nothing here is waiting on more code.
+Status: In progress
 
 The harness is not finished until something depends on it. Two consumers, and each is expected to
 find something the harness got wrong — that is the value of this phase, not a sign it failed.
 
-- [ ] Add `test-pty` as a submodule of sharp-shell at `vendor/test-pty`, project-referenced from
+**Where it stands.** This repository is published at `https://github.com/UtopleMan/test-pty` and
+sharp-shell vendors it; that half is done. The remaining items each change another repository, and
+the last of them deletes a file inside a `non-ai/` folder that duetui's own instructions put out of
+bounds for tools — a person does that one, or says explicitly to.
+
+Nothing here is waiting on more code from this repository: the API is complete on Unix, the suite is
+green and stable over twenty consecutive runs, and `scripts/verify-windows.ps1` exists for the
+Windows half.
+
+**First consumer, what it cost.** Wiring sharp-shell took a submodule, one `ProjectReference`, and
+nothing else — no API change was forced. Two things worth knowing for the next consumer:
+
+- The vendored project builds under *its own* `Directory.Build.props`, because MSBuild stops at the
+  nearest one walking up. Consumers do not need to accommodate it, and it does not inherit theirs.
+- Do **not** add `TestPty.csproj` to the consumer's solution file. It builds transitively through
+  the test project's reference, and a solution entry pulls vendored code into `dotnet format`.
+- xUnit's `xUnit1051` analyzer rejects a `WaitFor` that is not given a cancellation token, so
+  consumers are pushed onto `TestContext.Current.CancellationToken`. That is the analyzer working
+  as intended; it is called out here because it surprises on first use.
+
+- [x] Add `test-pty` as a submodule of sharp-shell at `vendor/test-pty`, project-referenced from
       `tests/Sharp.Shell.Tests`.
 - [ ] Port sharp-shell's line-editor pty cases onto it. Those tests are specified in that
       repository's own plan; this phase only provides what they run on.
