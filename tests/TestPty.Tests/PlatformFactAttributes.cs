@@ -16,17 +16,3 @@ public sealed class UnixFactAttribute : FactAttribute
         SkipType = typeof(TestConditions);
     }
 }
-
-/// <summary>A case that needs ConPTY, and that says so when it is skipped.</summary>
-public sealed class WindowsFactAttribute : FactAttribute
-{
-    public WindowsFactAttribute(
-        [CallerFilePath] string? sourceFilePath = null,
-        [CallerLineNumber] int sourceLineNumber = -1)
-        : base(sourceFilePath, sourceLineNumber)
-    {
-        Skip = TestConditions.WindowsOnly;
-        SkipUnless = nameof(TestConditions.IsWindows);
-        SkipType = typeof(TestConditions);
-    }
-}

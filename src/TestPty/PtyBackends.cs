@@ -7,7 +7,9 @@ public static class PtyBackends
     {
         if (OperatingSystem.IsWindows())
         {
-            return new WindowsPtyBackend();
+            throw new PlatformNotSupportedException(
+                "This harness is Unix-only. Windows support was dropped rather than shipped unverified; " +
+                "see plans/pty-test-harness.md.");
         }
 
         return new UnixPtyBackend();

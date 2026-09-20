@@ -2,7 +2,7 @@
 
 Build a test-only .NET library that runs a terminal program under a real pseudo-terminal, sends it
 keys, interprets what it draws into a virtual screen, and lets a test assert on that screen —
-synchronising on output rather than on sleeps, on Unix and on Windows.
+synchronising on output rather than on sleeps. Unix only — see Phase 3.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use
@@ -18,7 +18,7 @@ for a hand-driven script and eyeball the result.
 the line-editor work needs a third. None is in a test suite; all three sleep between keystrokes.
 
 **Tech stack:** .NET 10 (`net10.0`), xunit.v3 on VSTest for the harness's own tests, `forkpty` via
-P/Invoke on Unix, ConPTY (`CreatePseudoConsole`) on Windows. No third-party runtime dependencies.
+P/Invoke. No third-party runtime dependencies.
 
 ## For Future Agents
 As work proceeds: mark checkboxes `- [x]` as items complete; when a phase is done, set its status to
@@ -26,17 +26,22 @@ As work proceeds: mark checkboxes `- [x]` as items complete; when a phase is don
 continue with zero context); run the phase's **Verification Plan** and record the result before
 moving on. When all phases are done, fill in **Final Recap** and **Deployment Plan**.
 
-Repository: `/Users/dude/Sources/UtopleMan/test-pty`, a fresh `git init` on `main` with no commits
-yet. Consumers live beside it: `../sharp-shell` and `../duetui`.
+Repository: `/Users/dude/Sources/UtopleMan/test-pty`, published privately at
+`https://github.com/UtopleMan/test-pty` on `main`. Consumers live beside it: `../sharp-shell` and
+`../duetui`.
 
-**Where this stands.** Phases 1, 2, 4, 5 and 6 are Complete and verified on macOS: the suite is 97
-passed / 10 skipped / 107 total, and it ran twenty times consecutively with no failures and no
-leaked processes. Phase 3 is *Written, not verified on Windows* — the ConPTY code compiles and its
-cases skip with a reason, but not one line of it has ever executed; `pwsh scripts/verify-windows.ps1`
-is how that changes. Phase 7 is *In progress*: this repository is published at
+**Where this stands.** Phases 1, 2, 4, 5 and 6 are Complete and verified on **macOS arm64 and
+Ubuntu 24.04 aarch64**: on both, the suite is 97 passed with nothing skipped, and on both it ran
+twenty times consecutively with no failures and no leaked processes. Phase 3 is **Dropped** —
+Windows support was removed rather than shipped unverified, and its summary records why and what
+bringing it back would cost. Phase 7 is *In progress*: this repository is published at
 `https://github.com/UtopleMan/test-pty` and sharp-shell now vendors it at `vendor/test-pty`, so the
 harness has its first real consumer. What is left there is duetui, and the line-editor tests that
 sharp-shell's own plan specifies. No code is outstanding in this repository for any of it.
+
+Phase summaries below quote the counts measured when each phase closed, and several of those include
+the ten Windows cases that Phase 3 has since removed. They are records, not current figures; the
+current figure is the one above.
 
 Before changing the Unix backend or the interop, read the Phase 2 and Phase 5 summaries. The rules
 about what a forked child may not do are not style; breaking them produces a test that hangs rather
@@ -50,7 +55,7 @@ out to be wrong, say so and record the change here.
 | | |
 |---|---|
 | Depth | Byte stream **and** virtual screen. The stream half serves a shell; the screen half is what a TUI needs. |
-| Platforms | Unix and Windows, both in the first pass. |
+| Platforms | ~~Unix and Windows, both in the first pass.~~ **Reversed: Unix only.** See Phase 3. |
 | Consumption | Git submodule, project-referenced from each consumer's test project. No package feed. |
 | Licence | Apache-2.0, matching sharp-shell. `LICENSE` and `NOTICE` are already in place. |
 | Synchronisation | Wait for output or for the screen to settle, always with a timeout. **No sleeps anywhere in the API or its tests.** |
@@ -83,21 +88,26 @@ Stated rather than buried. Each is cheap to change now and expensive later.
 - **Interactive debugging tools.** No capture viewer, no recording playback. The captures land on
   disk when a test fails and that is enough.
 
-## The risk that decides whether this plan is honest
+## The risk that decided whether this plan was honest, and how it resolved
 
-**ConPTY cannot be executed on the machine this plan is being written on.** It is macOS. The Windows
-backend can be written and reasoned about carefully, and its unit-testable parts can be covered, but
-"it works on Windows" will be a human running it on Windows, not a green suite here.
+This section originally read: *"ConPTY cannot be executed on the machine this plan is being written
+on. It is macOS. The Windows backend can be written and reasoned about carefully, and its
+unit-testable parts can be covered, but 'it works on Windows' will be a human running it on Windows,
+not a green suite here."* Phase 3 was therefore written to be falsifiable by someone else rather than
+trusted on the strength of a compile.
 
-Phase 3 is therefore written to be *falsifiable by someone else*: it ends with an explicit
-hand-verification script and a statement in the Phase Summary of exactly what was and was not
-executed. Do not write "ConPTY works" in that summary on the strength of a compile.
+It was never falsified, because it was never run. Rather than keep code in the tree claiming a
+platform it had never touched, **Windows support was dropped.** The risk this section named is
+exactly the one that materialised, and deleting the code is the honest resolution of it — not a
+retreat from it. Phase 3 carries the full account, including what bringing it back would cost.
 
 ## Phase 1: The repository, and the API both backends must satisfy
 Status: Complete
 
 Nothing platform-specific. The point is to fix the shape of the thing before either backend exists,
-so that the second backend is an implementation rather than a redesign.
+so that the second backend is an implementation rather than a redesign. In the event there is only
+one backend, but `IPtyBackend` earned its keep anyway: `FakePtyBackend` is what makes the session,
+the screen and the waits testable without a process.
 
 - [x] `TestPty.slnx`, `Directory.Build.props` (the conventions listed under Assumptions),
       `src/TestPty/TestPty.csproj`, `tests/TestPty.Tests/TestPty.Tests.csproj` with xunit.v3 3.2.2,
@@ -252,80 +262,81 @@ left alone deliberately.
 - *`PtySession.WaitForExit`* now reports a pump that will not finish as a `PtyTimeoutException`
   rather than a bare `TimeoutException`.
 
-**What is not proved.** Everything above ran on macOS arm64 only. On Linux the code takes different
-branches in exactly three places — the `forkpty` symbol may come from `libutil.so.1` rather than
-libc, `__errno_location` replaces `__error`, and `TIOCSWINSZ` is `0x5414` rather than `0x80087467` —
-and none of those branches has been executed. The Linux path is reasoned about, not tested.
+**Verified on Linux too, after the fact.** Ubuntu 24.04 aarch64 (glibc 2.39) under QEMU with `hvf`:
+`dotnet build` succeeds with 0 warnings, the suite passes 97 with 10 skipped out of 107, and it ran
+**twenty times consecutively with zero failures and zero orphaned processes** — the same bar macOS
+met. Every Linux-specific branch executed: `__errno_location` instead of `__error`, `TIOCSWINSZ`
+`0x5414` instead of `0x80087467`, and the *public* variadic `fcntl` and `ioctl` names instead of the
+`__`-prefixed stubs. The resize case passing is what proves the variadic branch is right on this ABI.
+
+A symbol probe on that machine recorded what the code actually binds to, since it is not what the
+plan assumed:
+
+| symbol | in `libc.so.6` | consequence |
+|---|---|---|
+| `forkpty` | yes | glibc 2.34 moved it out of libutil, so the libc-first lookup wins |
+| `__errno_location` | yes | the Linux errno branch is the one taken |
+| `__ioctl` | **no** | confirms the `__`-prefixed names are correctly Apple-only |
+| `ioctl`, `fcntl` | yes | the public variadic names are used, and they work here |
+
+**What is still not proved.** The `libutil.so.1` fallback in `LibC.LoadCandidates` has never been
+exercised, and on any glibc that .NET 10 supports it never will be: `forkpty` has lived in
+`libc.so.6` since glibc 2.34, and .NET 10 requires newer than that. It is defensive code for musl and
+for old distributions, not a path in use. Treat it as untested.
 
 ## Phase 3: The Windows backend
-Status: Written, not verified on Windows
+Status: Dropped
 
-**Read "The risk that decides whether this plan is honest" above before starting this phase.**
+**This phase was written, then removed.** The code existed, compiled with no warnings, and its ten
+cases skipped with a reason naming the platform they needed — but not one line of ConPTY ever
+executed, and the decision was that unverified code claiming a platform is worse than no claim at
+all. The scope reversal is recorded in **Decisions already taken** above, against the row that said
+"Unix and Windows, both in the first pass".
 
-- [x] `WindowsPtyBackend` over ConPTY: `CreatePipe` for the two pipe pairs, `CreatePseudoConsole`,
-      `InitializeProcThreadAttributeList` with `PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE`,
-      `CreateProcess` with `EXTENDED_STARTUPINFO_PRESENT`.
-- [x] Teardown in the order ConPTY requires: close the input write handle, `ClosePseudoConsole`,
-      drain the output pipe to end-of-file, then close the remaining handles. Out of order this
-      deadlocks, and it deadlocks *sometimes*, which is worse.
-- [x] `ResizePseudoConsole` for `Resize`.
-- [x] `GetExitCodeProcess` for the status; `TerminateProcess` for `Kill`.
-- [x] Windows sends `\r\n` where Unix sends `\n`. Decide at the backend boundary whether the session
-      normalises, and write the decision down — a consumer's assertion must not have to know which
-      platform it is on.
-- [x] A `scripts/verify-windows.ps1` that a person can run on a Windows machine: builds, runs the
-      Windows-tagged tests, and prints a pass or fail summary. This is the deliverable that makes
-      the phase checkable by someone other than its author.
+### What was removed
+- `src/TestPty/WindowsPtyBackend.cs` — ConPTY over `CreatePipe`, `CreatePseudoConsole`,
+  `InitializeProcThreadAttributeList`, `UpdateProcThreadAttribute`, `CreateProcessW`
+- `src/TestPty/WindowsCommandLine.cs` — the quoting rules `CreateProcessW` expects
+- `src/TestPty/Interop/Kernel32.cs`, `src/TestPty/Interop/WindowsStructures.cs`
+- `tests/TestPty.Tests/WindowsBackendTests.cs` — ten behavioural cases mirroring the Unix ones
+- `scripts/verify-windows.ps1` — the hand-verification script
+- `WindowsFactAttribute`, and `TestConditions.IsWindows`/`WindowsOnly`
+
+`PtyBackends.Create()` now throws a `PlatformNotSupportedException` on Windows that says the support
+was dropped rather than pretending the platform was never considered.
+
+It is all in git history at commit `deb1260`, so bringing it back is a revert of these deletions
+rather than a rewrite.
+
+### Why it could not be verified here
+Three routes were tried on this machine, which is an Apple Silicon Mac:
+
+1. *OrbStack* — Linux only. Its own `orb create` lists sixteen distributions and no Windows guest.
+2. *A local VM under QEMU/UTM* — QEMU 11.1.1 and UTM were installed, and everything needed to run the
+   verification unattended was built: an `autounattend.xml` bypassing the TPM, Secure Boot and RAM
+   checks, a first-logon runner, and a 2 GB FAT32 payload disk carrying the repository and the
+   `win-arm64` SDK so the guest needed no network at all. It never ran, because **no Windows 11 ARM64
+   installation media could be obtained on this network.** uupdump's small metadata files download
+   fine; its large `.ESD` payload files return zero bytes and time out — *from the macOS host as well
+   as from inside the VM*. Four explanations were tested and ruled out: signed-URL expiry (556 s
+   still valid), IPv6 (forcing IPv4 failed the same way), parallel range requests (a single
+   connection failed too), and HTTP keep-alive through QEMU's user-mode networking (disabling it
+   changed nothing, and the host fails identically).
+3. *Microsoft's official ARM64 ISO page and CrystalFetch* — both need a person at a browser.
+
+### What bringing it back would take
+- A Windows ARM64 or x64 machine, or **a `windows-latest` GitHub Actions job**, which is the cheap
+  option now that the repository is on GitHub: minutes, no media to obtain, and it makes the claim
+  re-checkable on every push instead of once.
+- `git revert` of the deletions, then the ten cases run for real.
+- One thing already settled and worth keeping: **the newline question needs no code.** The plan
+  assumed Windows sends `\r\n` where Unix sends `\n`. That is wrong — a Unix pty has `ONLCR` on and
+  also sends `\r\n`, measured directly on this machine as `b'hello\r\n'` from `/bin/echo`. Nothing
+  normalises anything, and `Screen` is platform-neutral without help.
 
 ### Verification Plan
-- On Unix, `dotnet build TestPty.slnx` — succeeds; the Windows backend compiles but is not exercised.
-- `dotnet test tests/TestPty.Tests --filter "FullyQualifiedName~WindowsBackend"` — every case skips
-  with a reason naming the platform. A silent pass on Unix would be a lie.
-- **Human verification, on Windows:** `pwsh scripts/verify-windows.ps1` — the same behavioural cases
-  Phase 2 runs on Unix, green.
-- The Phase Summary must state plainly which of these were executed and which were not.
-
-### Phase Summary
-**Executed, on macOS:** `dotnet build TestPty.slnx` succeeds with 0 warnings — the Windows backend
-compiles. `dotnet test --filter "FullyQualifiedName~WindowsBackend"` reports 10 skipped, 0 passed,
-0 failed, each naming ConPTY as the thing it needed. The whole suite is still green.
-
-**Not executed:** every line of ConPTY. `CreatePseudoConsole`, `UpdateProcThreadAttribute`,
-`CreateProcessW`, `ResizePseudoConsole`, the teardown order, and all ten behavioural cases have never
-run. This phase's status is therefore *Written, not verified on Windows* rather than Complete, and it
-stays that way until someone runs `pwsh scripts/verify-windows.ps1` on a Windows machine and records
-the result here. **Do not mark this phase Complete on the strength of a compile.**
-
-**What exists.** `WindowsPtyBackend`, `Interop/Kernel32` (`LibraryImport`, not `DllImport`),
-`Interop/WindowsStructures` (`Coord`, `StartupInfo`, `StartupInfoEx`, `ProcessInformation`),
-`WindowsCommandLine` (the quoting rules `CreateProcessW` expects), `WindowsBackendTests`, and
-`scripts/verify-windows.ps1`. `PtyBackends.Create()` now returns the Windows backend on Windows.
-
-**The newline question, settled with evidence rather than assumption.** The plan assumed Windows
-sends `\r\n` where Unix sends `\n`. That is wrong: a Unix pty has `ONLCR` on by default, so it also
-sends `\r\n`. Measured directly — `/bin/echo hello` under a pty on this machine produces exactly
-`b'hello\r\n'`. **The decision is therefore that nothing normalises anything.** Both platforms send
-`\r\n`; `Screen` already treats `\r` as "column 0" and `\n` as "next line", so an assertion on the
-screen is platform-neutral without help. An assertion on `PlainText` sees `\r\n` on both. A consumer
-never has to know which platform it is on, and no code was written to make that true.
-
-**Decisions a Windows verifier should know about.**
-
-- *Handle lifetime.* The parent's copies of the two handles given to `CreatePseudoConsole` are closed
-  immediately afterwards, as the Microsoft sample does — ConPTY duplicates them into the console
-  host.
-- *Teardown order* is the one the plan specifies: close the input write handle, `ClosePseudoConsole`,
-  then the output handles and the attribute list. What keeps `ClosePseudoConsole` from blocking is
-  that the session's reader is draining the output pipe throughout; if a future change makes the
-  pump stop early, this is the first place to look for an intermittent hang.
-- *No `ProgramResolver` on Windows.* `CreateProcessW` does its own PATH search, so the program name
-  goes into the command line and a name that does not resolve comes back as a `PtyStartException`
-  carrying the Win32 message.
-- *The environment block* is UTF-16, sorted case-insensitively, double-NUL terminated, with
-  `CREATE_UNICODE_ENVIRONMENT` set.
-- *The size cases use PowerShell* (`$Host.UI.RawUI.WindowSize.Width`) rather than `mode con`, because
-  `mode con` prints localised labels and the assertion would then depend on the machine's language.
-  If PowerShell turns out not to see the pseudoconsole size, that is the first case to rewrite.
+Not applicable. The phase is dropped rather than complete, and the suite now reports 97 passed with
+nothing skipped, because there are no platform-gated cases left to skip.
 
 ## Phase 4: The virtual screen
 Status: Complete
@@ -474,8 +485,8 @@ Self-testing against a program with known output, before either consumer depends
 
 ### Verification Plan
 - `dotnet test tests/TestPty.Tests` — whole suite green on macOS.
-- `dotnet test tests/TestPty.Tests --filter "FullyQualifiedName~RealProgram"` — green, and skipped
-  with a reason on Windows until Phase 3 is verified there.
+- `dotnet test tests/TestPty.Tests --filter "FullyQualifiedName~RealProgram"` — green. These are
+  `[UnixFact]`, so they skip with a reason rather than fail if the suite is ever run elsewhere.
 - `dotnet format --verify-no-changes` — clean.
 
 ### Phase Summary
@@ -503,7 +514,8 @@ clean.
 
 **The README was rewritten** around that example, which is now the body of
 `RealProgramTests.The_readme_example_works` — change one and change the other. Its Status section now
-says plainly that Unix works and Windows has never been executed, rather than "not built yet".
+says plainly that Unix works, rather than "not built yet". It was revised again when Phase 3 was
+dropped, so that it no longer mentions ConPTY at all.
 
 **No shell `sleep` anywhere.** A program that has to stay alive for a test blocks on `read` instead,
 so nothing in this repository waits for a fixed period, not even inside a program under test.
@@ -520,8 +532,8 @@ the last of them deletes a file inside a `non-ai/` folder that duetui's own inst
 bounds for tools — a person does that one, or says explicitly to.
 
 Nothing here is waiting on more code from this repository: the API is complete on Unix, the suite is
-green and stable over twenty consecutive runs, and `scripts/verify-windows.ps1` exists for the
-Windows half.
+green and stable over twenty consecutive runs on both macOS and Linux, and there is no unverified
+platform left to caveat.
 
 **First consumer, what it cost.** Wiring sharp-shell took a submodule, one `ProjectReference`, and
 nothing else — no API change was forced. Two things worth knowing for the next consumer:

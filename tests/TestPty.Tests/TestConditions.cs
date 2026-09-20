@@ -8,9 +8,5 @@ public static class TestConditions
 {
     public const string UnixOnly = "This case drives forkpty, which only exists on Unix.";
 
-    public const string WindowsOnly = "This case drives ConPTY, which only exists on Windows.";
-
     public static bool IsUnix => !OperatingSystem.IsWindows();
-
-    public static bool IsWindows => OperatingSystem.IsWindows();
 }

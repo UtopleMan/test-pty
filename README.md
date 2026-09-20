@@ -30,7 +30,8 @@ Assert.Contains("done", pty.Screen.ToText(), StringComparison.Ordinal);
 That example is not illustrative: it is the body of `RealProgramTests.The_readme_example_works`, so
 it is compiled and run by the suite. If you change one, change the other.
 
-Unix uses `forkpty`; Windows uses ConPTY. The same API either way.
+Unix only. The child runs under `forkpty`, with a real controlling terminal, so a `Ctrl-C` you send
+arrives as a signal rather than as a byte nobody acts on.
 
 Test-only. Nothing here ships inside a product.
 
@@ -49,9 +50,13 @@ Both waits and the screen are deliberately shallow: `WaitFor` searches the decod
 
 ## Status
 
-Unix works and is under test. The Windows backend is written but **has never been executed** — see
-`plans/pty-test-harness.md`, which is the source of truth for what is done and what is not, and
-`scripts/verify-windows.ps1`, which is how someone on Windows finds out.
+Working and under test on **macOS arm64** and **Ubuntu 24.04 aarch64**: 97 cases, nothing skipped,
+and the suite holds over twenty consecutive runs on both.
+
+**There is no Windows support.** A ConPTY backend was written and then removed rather than shipped
+without ever having been executed; `PtyBackends.Create()` says so if you try. The reasoning, and what
+bringing it back would cost, is in Phase 3 of `plans/pty-test-harness.md` — which remains the source
+of truth for what is done and what is not.
 
 ## Used by
 
