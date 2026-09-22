@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace TestPty.Interop;
@@ -125,7 +126,19 @@ internal static unsafe partial class LibC
             ? IoctlFixedArity(descriptor, SetWindowSizeRequest, size)
             : IoctlVariadic(descriptor, SetWindowSizeRequest, size);
 
-    public static int Errno() => IsMacOs ? *ErrnoLocationMacOs() : *ErrnoLocationLinux();
+    /// <summary>
+    /// The two errno lookups live in separate, uninlinable methods because a
+    /// <see cref="SuppressGCTransitionAttribute"/> call is an inline pseudo-call: the JIT resolves
+    /// its target while compiling the method that contains it, whether or not the branch ever runs.
+    /// Both in one body means every platform binds the other platform's symbol and throws.
+    /// </summary>
+    public static int Errno() => IsMacOs ? ErrnoMacOs() : ErrnoLinux();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int ErrnoMacOs() => *ErrnoLocationMacOs();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int ErrnoLinux() => *ErrnoLocationLinux();
 
     /// <summary>The exit status a wait reported, as a shell would report it.</summary>
     public static int DecodeWaitStatus(int status) =>
@@ -133,9 +146,16 @@ internal static unsafe partial class LibC
 
     /// <summary>
     /// Binds every entry point the forked child uses, here in the parent. Binding a P/Invoke runs
-    /// managed code and takes loader locks; in a child of fork that is a hang. Each call is
-    /// deliberately inert — a bad descriptor, an empty path, signal zero.
+    /// managed code and takes the JIT's lock; in a child of fork no thread survives to release it, so
+    /// the child waits on that lock forever. Each call is deliberately inert — a bad descriptor, an
+    /// empty path, signal zero.
     /// </summary>
+    /// <remarks>
+    /// Every call goes through a function pointer because the child's calls do. A direct call to a
+    /// <see cref="SuppressGCTransitionAttribute"/> method is compiled into the caller's own body and
+    /// leaves the callee's standalone stub unbuilt, so the child would still be the first to reach it
+    /// and would still hang. Calling through the pointer builds the stub the child will use.
+    /// </remarks>
     private static void BindChildCalls()
     {
         byte* emptyPath = stackalloc byte[1];
@@ -144,11 +164,18 @@ internal static unsafe partial class LibC
         byte** emptyVector = stackalloc byte*[1];
         emptyVector[0] = null;
 
-        _ = IsMacOs ? ErrnoLocationMacOs() : ErrnoLocationLinux();
-        ChangeDirectory(emptyPath);
-        ExecuteImage(emptyPath, emptyVector, emptyVector);
-        Write(-1, emptyPath, 0);
-        Kill(GetProcessId(), 0);
+        delegate* managed<int*> errnoLocation = IsMacOs ? &ErrnoLocationMacOs : &ErrnoLocationLinux;
+        delegate* managed<byte*, int> changeDirectory = &ChangeDirectory;
+        delegate* managed<byte*, byte**, byte**, int> executeImage = &ExecuteImage;
+        delegate* managed<int, void*, nuint, nint> write = &Write;
+        delegate* managed<int> getProcessId = &GetProcessId;
+        delegate* managed<int, int, int> kill = &Kill;
+
+        _ = errnoLocation();
+        changeDirectory(emptyPath);
+        executeImage(emptyPath, emptyVector, emptyVector);
+        write(-1, emptyPath, 0);
+        kill(getProcessId(), 0);
     }
 
     private static nint ResolveLibrary(string libraryName, Assembly assembly, DllImportSearchPath? searchPath) =>
