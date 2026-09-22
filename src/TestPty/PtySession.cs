@@ -217,18 +217,32 @@ public sealed class PtySession : IDisposable
     }
 
     /// <summary>
-    /// Clicks where <paramref name="text"/> is drawn and waits for the screen to settle.
+    /// Clicks where <paramref name="text"/> is drawn and waits for the result.
     /// <paramref name="offset"/> moves the click along that row from the text's first column, so a
-    /// caller can hit the middle of a button rather than its first letter.
+    /// caller can hit the middle of a button rather than its first letter. <paramref name="until"/>
+    /// says what the click should produce; leave it out and the wait is for the screen to settle,
+    /// which only answers for a program that stops drawing when it has nothing to say.
     /// </summary>
     /// <exception cref="InvalidOperationException">The text is not on the screen.</exception>
-    public async Task ClickAt(string text, int offset = 0, CancellationToken cancellationToken = default)
+    public async Task ClickAt(
+        string text,
+        int offset = 0,
+        Func<Screen, bool>? until = null,
+        CancellationToken cancellationToken = default)
     {
         ScreenPosition position = screen.Find(text)
             ?? throw new InvalidOperationException($"Nothing to click: {Readable.Quote(text)} is not on the screen.\n\nScreen:\n{screen.ToText()}");
 
         Send(Mouse.Click(position.Column + offset, position.Row));
-        await WaitForIdle(cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        if (until is null)
+        {
+            await WaitForIdle(cancellationToken: cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await WaitForScreen(until, $"the click on {Readable.Quote(text)} to be answered", cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>Waits for the program to exit, as distinct from merely going quiet.</summary>

@@ -29,9 +29,29 @@ public sealed class ApiShapeTests
         backend.Emit("\r\n  Next");
         await session.WaitFor("Next", GenerousTimeout, TestToken);
 
-        await session.ClickAt("Next", offset: 2, TestToken);
+        await session.ClickAt("Next", offset: 2, cancellationToken: TestToken);
 
         Assert.Equal(Mouse.Click(4, 1), backend.WrittenText);
+    }
+
+    [Fact]
+    public async Task ClickAt_can_wait_for_what_the_click_produced_rather_than_for_quiet()
+    {
+        var backend = new FakePtyBackend();
+        using PtySession session = PtySession.Start(backend, QuickOptions);
+
+        backend.Emit("Next");
+        await session.WaitFor("Next", GenerousTimeout, TestToken);
+
+        Task click = session.ClickAt(
+            "Next",
+            until: screen => screen.Find("done") is not null,
+            cancellationToken: TestToken);
+
+        backend.Emit("\r\ndone");
+        await click;
+
+        Assert.Equal(Mouse.Click(0, 0), backend.WrittenText);
     }
 
     [Fact]

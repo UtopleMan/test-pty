@@ -48,6 +48,10 @@ Test-only. Nothing here ships inside a product.
 | `PtyOptions` | Program and arguments, working directory, environment, size, `TERM`, the default timeout, and where to write a capture when a wait fails. |
 | `PtyTimeoutException` | What was waited for, for how long, and the screen as it stood. A timeout that does not show the screen wastes the failure. |
 
+`WaitForIdle` answers for a program that stops drawing when it has nothing to say. A full-screen
+application with an animation on it never does, and there a wait for quiet can only time out — wait
+for what you expect with `WaitForScreen`, or pass `until` to `ClickAt`.
+
 Both waits and the screen are deliberately shallow: `WaitFor` searches the decoded byte stream, and
 `Screen` answers what was drawn. Use the stream for a shell, the screen for a TUI.
 

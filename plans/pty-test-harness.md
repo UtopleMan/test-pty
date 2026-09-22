@@ -576,8 +576,13 @@ and got:
 - **Finding things.** `Screen.Find`, `Screen.FindAll` and `Screen.FindBox`, with `ScreenPosition`,
   `ScreenRegion` and `BoxGlyphs`. A layout that reflows makes a hard-coded row number a lie, and
   every throwaway script duetui had was re-implementing this search by hand.
-- **`PtySession.ClickAt`.** Find the text, click it, wait for the screen to settle — the four lines
-  that appeared in every one of those scripts.
+- **`PtySession.ClickAt`.** Find the text, click it, wait. Waiting for the screen to *settle* was
+  the first shape, and duetui cannot use it: a Terminal.Gui application with an animation on it
+  never has a quiet moment, so every click timed out. `ClickAt` now takes an optional `until`
+  predicate — what the click should produce — and only falls back to waiting for quiet when the
+  caller has nothing better to say. **Take this as the general warning: `WaitForIdle` answers for a
+  program that stops drawing when it has nothing to say, and a full-screen application is often not
+  one.**
 - **`Blank()` keeps the background.** Erasing a region used to reset it to the terminal default,
   which is wrong for a program that paints a ground colour and then clears — the cleared cells are
   still that colour on a real terminal.
