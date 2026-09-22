@@ -550,11 +550,37 @@ nothing else — no API change was forced. Two things worth knowing for the next
       `tests/Sharp.Shell.Tests`.
 - [ ] Port sharp-shell's line-editor pty cases onto it. Those tests are specified in that
       repository's own plan; this phase only provides what they run on.
-- [ ] Add `test-pty` as a submodule of duetui, project-referenced from its test project.
+- [x] Add `test-pty` as a submodule of duetui, project-referenced from its test project.
 - [ ] Port one duetui rendering case — the one `non-ai/edit-tool-diff-rendering.md` describes
       driving by hand — onto the harness, and retire `non-ai/support/pty-drive.py`.
 - [ ] Record, here, every API change the two consumers forced. That list is the evidence for whether
       the API is ready to be packaged.
+
+**Second consumer, what it cost.** duetui drives a Terminal.Gui application rather than a line
+editor, and it forced more than sharp-shell did — every item below is an API change duetui asked for
+and got:
+
+- **The suite did not run at all on macOS.** Not an API change, but the first thing duetui found,
+  and the reason the "twenty consecutive runs on both" claim above was never true of macOS. Two
+  faults in `LibC`, both described in the README's Status section: an errno lookup that bound both
+  platforms' symbols from one method body, and a `BindChildCalls` that bound nothing the forked
+  child would actually reach. The child deadlocked in the JIT.
+- **Extended colour.** `Screen` skipped every parameter after `38`/`48`, so a program painting in
+  24-bit — which every Terminal.Gui theme does — read as `TerminalColor.Default` in every cell.
+  `CellColor` now carries `Default`, `Named`, `Indexed` and `Rgb`, `CellAttributes` exposes it as
+  `ForegroundColor`/`BackgroundColor`, and `ToRgb()` maps the 256 palette so an index and a
+  truecolor value can be compared. `Foreground`/`Background` are kept, now derived, so nothing that
+  read them had to change.
+- **Mouse.** `Mouse.Press`, `Release`, `Click`, `Wheel` and `Move` emit SGR (1006) in zero-based
+  screen coordinates. A TUI with clickable controls cannot be tested without them.
+- **Finding things.** `Screen.Find`, `Screen.FindAll` and `Screen.FindBox`, with `ScreenPosition`,
+  `ScreenRegion` and `BoxGlyphs`. A layout that reflows makes a hard-coded row number a lie, and
+  every throwaway script duetui had was re-implementing this search by hand.
+- **`PtySession.ClickAt`.** Find the text, click it, wait for the screen to settle — the four lines
+  that appeared in every one of those scripts.
+- **`Blank()` keeps the background.** Erasing a region used to reset it to the terminal default,
+  which is wrong for a program that paints a ground colour and then clears — the cleared cells are
+  still that colour on a real terminal.
 
 ### Verification Plan
 - In `../sharp-shell`: `dotnet test tests/Sharp.Shell.Tests` — green, including the new pty cases.

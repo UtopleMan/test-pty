@@ -139,13 +139,119 @@ public sealed class ScreenTests
     }
 
     [Fact]
-    public void An_extended_colour_is_skipped_whole_rather_than_read_as_ordinary_codes()
+    public void An_indexed_colour_is_read_rather_than_skipped()
     {
         Screen screen = Feed("\u001b[38;5;196mA", columns: 20, rows: 4);
 
+        Assert.Equal(CellColor.Indexed(196), screen.Cell(0, 0).Attributes.ForegroundColor);
         Assert.Equal(TerminalColor.Default, screen.Cell(0, 0).Attributes.Foreground);
         Assert.False(screen.Cell(0, 0).Attributes.IsBold);
+        Assert.Empty(screen.UnhandledSequences);
+    }
+
+    [Fact]
+    public void An_indexed_background_is_read()
+    {
+        Screen screen = Feed("\u001b[48;5;17mA", columns: 20, rows: 4);
+
+        Assert.Equal(CellColor.Indexed(17), screen.Cell(0, 0).Attributes.BackgroundColor);
+        Assert.Empty(screen.UnhandledSequences);
+    }
+
+    [Fact]
+    public void A_truecolor_foreground_and_background_survive_into_the_cell()
+    {
+        Screen screen = Feed("\u001b[38;2;255;175;0m\u001b[48;2;38;38;44mA", columns: 20, rows: 4);
+
+        CellAttributes attributes = screen.Cell(0, 0).Attributes;
+
+        Assert.Equal(CellColor.Rgb(0xffaf00), attributes.ForegroundColor);
+        Assert.Equal(CellColor.Rgb(0x26262c), attributes.BackgroundColor);
+        Assert.Empty(screen.UnhandledSequences);
+    }
+
+    [Fact]
+    public void A_named_colour_answers_both_the_name_and_the_colour()
+    {
+        Screen screen = Feed("\u001b[31mA", columns: 20, rows: 4);
+
+        CellAttributes attributes = screen.Cell(0, 0).Attributes;
+
+        Assert.Equal(TerminalColor.Red, attributes.Foreground);
+        Assert.Equal(CellColor.Named(TerminalColor.Red), attributes.ForegroundColor);
+        Assert.Equal(ColorKind.Named, attributes.ForegroundColor.Kind);
+    }
+
+    [Fact]
+    public void An_indexed_colour_and_the_truecolor_it_stands_for_agree()
+    {
+        Assert.Equal(0xffaf00, CellColor.Indexed(214).ToRgb());
+        Assert.Equal(0x000000, CellColor.Indexed(16).ToRgb());
+        Assert.Equal(0xffffff, CellColor.Indexed(231).ToRgb());
+        Assert.Equal(0x080808, CellColor.Indexed(232).ToRgb());
+        Assert.Equal(0xeeeeee, CellColor.Indexed(255).ToRgb());
+        Assert.Equal(0xcd0000, CellColor.Named(TerminalColor.Red).ToRgb());
+        Assert.Null(CellColor.Default.ToRgb());
+    }
+
+    [Fact]
+    public void An_extended_colour_form_that_is_not_understood_leaves_the_codes_after_it_alone()
+    {
+        Screen screen = Feed("\u001b[38;2;1;2m\u001b[1mA", columns: 20, rows: 4);
+
+        Assert.Equal(CellColor.Default, screen.Cell(0, 0).Attributes.ForegroundColor);
+        Assert.True(screen.Cell(0, 0).Attributes.IsBold);
         Assert.Contains(screen.UnhandledSequences, sequence => sequence.Contains("38", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_erased_cell_keeps_the_background_the_program_was_painting_with()
+    {
+        Screen screen = Feed("\u001b[48;2;38;38;44m\u001b[2J", columns: 20, rows: 4);
+
+        Assert.Equal(CellColor.Rgb(0x26262c), screen.Cell(1, 1).Attributes.BackgroundColor);
+    }
+
+    [Fact]
+    public void Find_returns_the_topmost_leftmost_hit_and_null_when_there_is_none()
+    {
+        Screen screen = Feed("  needle\r\nneedle  needle", columns: 20, rows: 4);
+
+        Assert.Equal(new ScreenPosition(0, 2), screen.Find("needle"));
+        Assert.Null(screen.Find("haystack"));
+    }
+
+    [Fact]
+    public void FindAll_returns_every_hit_in_reading_order()
+    {
+        Screen screen = Feed("ab\r\n  ab  ab", columns: 20, rows: 4);
+
+        Assert.Equal(
+            [new ScreenPosition(0, 0), new ScreenPosition(1, 2), new ScreenPosition(1, 6)],
+            screen.FindAll("ab"));
+    }
+
+    [Fact]
+    public void FindBox_measures_a_box_from_its_corners()
+    {
+        Screen screen = Feed(
+            "╭──────╮\r\n│      │\r\n│      │\r\n╰──────╯",
+            columns: 20,
+            rows: 6);
+
+        Assert.Equal(new ScreenRegion(0, 0, 8, 4), screen.FindBox(BoxGlyphs.Rounded));
+        Assert.Null(screen.FindBox(BoxGlyphs.Single));
+    }
+
+    [Fact]
+    public void FindBox_ignores_a_corner_that_never_closes()
+    {
+        Screen screen = Feed(
+            "╭\r\n  ╭────╮\r\n  │    │\r\n  ╰────╯",
+            columns: 20,
+            rows: 6);
+
+        Assert.Equal(new ScreenRegion(1, 2, 6, 3), screen.FindBox(BoxGlyphs.Rounded));
     }
 
     [Fact]

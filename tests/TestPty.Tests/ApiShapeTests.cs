@@ -21,6 +21,36 @@ public sealed class ApiShapeTests
     };
 
     [Fact]
+    public async Task ClickAt_reports_a_click_where_the_text_was_drawn()
+    {
+        var backend = new FakePtyBackend();
+        using PtySession session = PtySession.Start(backend, QuickOptions);
+
+        backend.Emit("\r\n  Next");
+        await session.WaitFor("Next", GenerousTimeout, TestToken);
+
+        await session.ClickAt("Next", offset: 2, TestToken);
+
+        Assert.Equal(Mouse.Click(4, 1), backend.WrittenText);
+    }
+
+    [Fact]
+    public async Task ClickAt_says_what_it_could_not_find_rather_than_clicking_nowhere()
+    {
+        var backend = new FakePtyBackend();
+        using PtySession session = PtySession.Start(backend, QuickOptions);
+
+        backend.Emit("nothing here");
+        await session.WaitFor("nothing", GenerousTimeout, TestToken);
+
+        InvalidOperationException failure =
+            await Assert.ThrowsAsync<InvalidOperationException>(() => session.ClickAt("Next", cancellationToken: TestToken));
+
+        Assert.Contains("Next", failure.Message, StringComparison.Ordinal);
+        Assert.Empty(backend.WrittenText);
+    }
+
+    [Fact]
     public void Start_passes_the_options_to_the_backend()
     {
         var backend = new FakePtyBackend();
