@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace TestPty.Interop;
@@ -125,7 +126,7 @@ internal static unsafe partial class LibC
             ? IoctlFixedArity(descriptor, SetWindowSizeRequest, size)
             : IoctlVariadic(descriptor, SetWindowSizeRequest, size);
 
-    public static int Errno() => IsMacOs ? *ErrnoLocationMacOs() : *ErrnoLocationLinux();
+    public static int Errno() => IsMacOs ? ErrnoMacOs() : ErrnoLinux();
 
     /// <summary>The exit status a wait reported, as a shell would report it.</summary>
     public static int DecodeWaitStatus(int status) =>
@@ -136,6 +137,11 @@ internal static unsafe partial class LibC
     /// managed code and takes loader locks; in a child of fork that is a hang. Each call is
     /// deliberately inert — a bad descriptor, an empty path, signal zero.
     /// </summary>
+    /// <remarks>
+    /// The calls go through function pointers because that is how the child makes them. A direct
+    /// call is inlined in an optimised build, which binds the caller and leaves the method the
+    /// child's pointer targets unbound until the child calls it.
+    /// </remarks>
     private static void BindChildCalls()
     {
         byte* emptyPath = stackalloc byte[1];
@@ -144,12 +150,30 @@ internal static unsafe partial class LibC
         byte** emptyVector = stackalloc byte*[1];
         emptyVector[0] = null;
 
-        _ = IsMacOs ? ErrnoLocationMacOs() : ErrnoLocationLinux();
-        ChangeDirectory(emptyPath);
-        ExecuteImage(emptyPath, emptyVector, emptyVector);
-        Write(-1, emptyPath, 0);
-        Kill(GetProcessId(), 0);
+        delegate* managed<byte*, int> changeDirectory = &ChangeDirectory;
+        delegate* managed<byte*, byte**, byte**, int> executeImage = &ExecuteImage;
+        delegate* managed<int, void*, nuint, nint> write = &Write;
+        delegate* managed<int, int, int> kill = &Kill;
+        delegate* managed<int> getProcessId = &GetProcessId;
+        delegate* managed<int*> errnoLocation = IsMacOs ? &ErrnoLocationMacOs : &ErrnoLocationLinux;
+
+        _ = errnoLocation();
+        changeDirectory(emptyPath);
+        executeImage(emptyPath, emptyVector, emptyVector);
+        write(-1, emptyPath, 0);
+        kill(getProcessId(), 0);
     }
+
+    /// <summary>
+    /// A <see cref="SuppressGCTransitionAttribute"/> call is inlined and its target resolved when the
+    /// calling method is compiled, so an optimised caller that names both platforms' errno entry
+    /// points fails on whichever symbol this libc lacks. Each platform's call lives alone here.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int ErrnoMacOs() => *ErrnoLocationMacOs();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int ErrnoLinux() => *ErrnoLocationLinux();
 
     private static nint ResolveLibrary(string libraryName, Assembly assembly, DllImportSearchPath? searchPath) =>
         libraryName switch
